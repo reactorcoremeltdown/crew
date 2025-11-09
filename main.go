@@ -203,6 +203,7 @@ type node struct {
 		username string
 		password string
 	}
+	childOrder []string
 }
 
 type nodeConf struct {
@@ -221,6 +222,8 @@ type nodeConf struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	} `json:"basic_auth"`
+	//Override alphabetical sort of nodes
+	ChildOrder []string `json:"child_order"`
 }
 
 func (n *node) URL() string {
@@ -267,7 +270,25 @@ func (n *node) getSubNodes() ([]*node, error) {
 		return nil, err
 	}
 	// create the nodes
-	var ns []*node
+	var prefix_ns, ns []*node
+
+	//First append nodes that appear in Child order config
+	for _, c := range n.childOrder {
+		for k, v := range files {
+			if c == v.Name() {
+				if isReservedName(v.Name()) {
+					continue
+				}
+				node, err := newNodeFromPath(path.Join(n.filepath, v.Name()))
+				if err != nil {
+					return nil, err
+				}
+				prefix_ns = append(prefix_ns, node)
+				files = append(files[:k], files[k+1:]...)
+			}
+		}
+	}
+
 	for _, f := range files {
 		// skip hidden/meta files
 		if isReservedName(f.Name()) {
@@ -281,7 +302,10 @@ func (n *node) getSubNodes() ([]*node, error) {
 	}
 	// sort the nodes
 	sortNodes(ns)
-	return ns, nil
+	for _, n := range ns {
+		prefix_ns = append(prefix_ns, n)
+	}
+	return prefix_ns, nil
 }
 
 func sortNodes(ns []*node) {
@@ -476,6 +500,7 @@ func newNodeFromPath(fullname string) (*node, error) {
 		username string
 		password string
 	}{}
+	var childOrder []string
 
 	isDir, cfgPath, err := getConfigFileForFile(fpath)
 	if err != nil {
@@ -540,6 +565,9 @@ func newNodeFromPath(fullname string) (*node, error) {
 			basicAuth.username = cfg.BasicAuth.Username
 			basicAuth.password = cfg.BasicAuth.Password
 		}
+		if len(cfg.ChildOrder) > 0 {
+			childOrder = cfg.ChildOrder
+		}
 	}
 	return &node{
 		filepath:    fpath,
@@ -554,6 +582,7 @@ func newNodeFromPath(fullname string) (*node, error) {
 		rpcEndpoint: rpcEndpoint,
 		authToken:   authToken,
 		basicAuth:   basicAuth,
+		childOrder:  childOrder,
 	}, nil
 }
 
