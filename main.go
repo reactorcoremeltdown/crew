@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -192,6 +193,8 @@ type node struct {
 	rpcEndpoint string
 	title       string
 	desc        string
+	headerImg   string
+	headerText  string
 	isDir       bool
 	isHidden    bool
 	tp          NodeType
@@ -462,6 +465,8 @@ func newNodeFromPath(fullname string) (*node, error) {
 	title = strings.Replace(title, "_", " ", -1)
 	// node desc
 	desc := ""
+	headerImg := ""
+	headerText := ""
 	hidden := false
 	tp := "file"
 	key := ""
@@ -475,6 +480,33 @@ func newNodeFromPath(fullname string) (*node, error) {
 	isDir, cfgPath, err := getConfigFileForFile(fpath)
 	if err != nil {
 		return nil, err
+	}
+	if !isDir {
+		rawTxt, err := os.ReadFile(fullname)
+		if err != nil {
+			return nil, err
+		}
+
+		lines := strings.Split(string(rawTxt), "\n")
+		headerImgRegex := regexp.MustCompile(`^!\[\].*$`)
+		for _, line := range lines {
+			headerImgMatches := headerImgRegex.FindAllString(line, -1)
+			if len(headerImgMatches) > 0 {
+				headerImg = strings.Replace(headerImgMatches[0], ")", "", -1)
+				headerImg = strings.TrimPrefix(headerImg, "![](")
+				break
+			}
+		}
+
+		headerTextRegex := regexp.MustCompile(`^[A-Za-z].*$`)
+		for _, line := range lines {
+			headerTextMatches := headerTextRegex.FindAllString(line, -1)
+			if len(headerTextMatches) > 0 {
+				headerText = headerTextMatches[0]
+				break
+			}
+
+		}
 	}
 	if fileExists(cfgPath) {
 		data, err := os.ReadFile(cfgPath)
@@ -513,6 +545,8 @@ func newNodeFromPath(fullname string) (*node, error) {
 		filepath:    fpath,
 		title:       title,
 		desc:        desc,
+		headerImg:   headerImg,
+		headerText:  headerText,
 		isHidden:    hidden,
 		isDir:       isDir,
 		tp:          NodeTypeFromStr(tp),
@@ -544,6 +578,8 @@ type page struct {
 	Nav         string
 	Body        string
 	Title       string
+	HeaderImg   string
+	HeaderText  string
 	Vals        map[string]string
 	bodyRender  func(p *page, ctx context.Context) ([]byte, error)
 }
@@ -555,6 +591,8 @@ func pageFromNode(n *node) *page {
 		SubHeadline: *siteSubtitle,
 	}
 	p.Title = n.title
+	p.HeaderImg = n.headerImg
+	p.HeaderText = n.headerText
 	return p
 }
 
